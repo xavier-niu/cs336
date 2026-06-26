@@ -55,6 +55,11 @@ venv.bak/
 # uv.lock
 .uv/
 
+# Datasets (large — download via data/download.sh, never commit)
+# Ignore everything in data/ except the download script.
+/data/*
+!/data/download.sh
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
