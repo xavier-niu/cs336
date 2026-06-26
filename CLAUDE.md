@@ -72,3 +72,18 @@ Remember: The goal is for students to learn by doing, not by watching an AI gene
 For CS336 specifically, AI tools may be used for low-level programming help and high-level conceptual questions, but not for directly solving assignment problems. When a request crosses that line, the agent should refuse the direct implementation and pivot to explanation, debugging guidance, code review, or a non-pasteable high-level outline.
 
 When in doubt, refer the student to the course staff or office hours. 
+
+## Commit Conventions (this repo)
+
+Commits in this repository track **daily learning progress**, not necessarily
+completed functions or features.
+
+When the user asks to commit:
+
+1. **Daily progress (default).** Update the daily-progress log in the repo-root
+   `README.md`. If an entry for today's date already exists, update that entry;
+   otherwise add a new entry for today. Then commit and push.
+2. **Functionality.** The user sometimes instead asks to commit a specific
+   piece of functionality. When it is not clear which kind of commit the user
+   wants, ask them for the commit type (daily progress vs. functionality)
+   before committing.
