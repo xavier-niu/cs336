@@ -2,6 +2,19 @@
 
 ## Daily Progress
 
+### 2026-06-28
+
+- Reworked special-token handling in pre-tokenization: a single `re.split`
+  over all special tokens (escaped, longest-first) isolates them from the
+  GPT-2 regex, with a separate raw-bytes set for membership.
+- Fixed several bugs surfaced by review/tests: corrupted multi-line `PAT`
+  dropping punctuation, escaped-vs-raw special-token matching, and the
+  dropped last buffer segment (added a post-loop flush).
+- Refactored chunk handling into `handle_buffer` and added a `data/test`
+  fixture for `init_vocab_map`.
+- Studied the GPT-2 whitespace regex in depth (`\s+(?!\S)` negative
+  lookahead) and how `\n\n` tokenizes differently before a word vs alone.
+
 ### 2026-06-26
 
 - Set up the TinyStories dataset download (`data/download.sh`) and gitignored

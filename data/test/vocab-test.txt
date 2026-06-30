@@ -1,0 +1,8 @@
+Hello Hi hi
+<|endoftext|>
+
+hi hi test <think>
+
+<|endoftext|>
+
+<think>test

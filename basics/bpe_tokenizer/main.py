@@ -1,30 +1,24 @@
-from multiprocessing.pool import Pool
-import os
+import argparse
+import logging
 from pathlib import Path
 
-from basics.bpe_tokenizer.pretokenizer import find_chunk_boundaries, init_vocab_map
+from basics.bpe_tokenizer import tokenizer
 
+
+parser = argparse.ArgumentParser(description="Train BPE on a dataset")
+parser.add_argument("dataset", help="dataset name, e.g. TinyStoriesV2-GPT4-train")
+args = parser.parse_args()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TINY_STORIES_TRAIN_PATH = REPO_ROOT / "data" / "TinyStoriesV2-GPT4-train.txt"
+DATA_PATH = REPO_ROOT / "data" / f"{args.dataset}.txt"
 
-CPUS = os.cpu_count() or 1
+if not DATA_PATH.exists():
+    raise SystemExit(f"{DATA_PATH} not found — run `bash data/download.sh` first")
 
-if not TINY_STORIES_TRAIN_PATH.exists():
-    raise FileNotFoundError(
-        f'File not found: {TINY_STORIES_TRAIN_PATH}, please run "$PROJECT/data/download.sh" first'
-    )
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-SPLIT_SPECIAL_TOKEN = b"<|endoftext|>"
-
-args = []
-with open(TINY_STORIES_TRAIN_PATH, "rb") as f:
-    boundaries = find_chunk_boundaries(f, CPUS, SPLIT_SPECIAL_TOKEN)
-    chunks = []
-    for start, end in zip(boundaries[:-1], boundaries[1:]):
-        args.append((TINY_STORIES_TRAIN_PATH, start, end, SPLIT_SPECIAL_TOKEN))
-
-assert len(args) == CPUS, f"Expected {CPUS} chunks, but got {len(args)}"
-
-with Pool(CPUS) as pool:
-    results = pool.starmap(init_vocab_map, args)
+tokenizer.train(str(DATA_PATH), 1048576, [])

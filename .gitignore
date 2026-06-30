@@ -59,6 +59,7 @@ venv.bak/
 # Ignore everything in data/ except the download script.
 /data/*
 !/data/download.sh
+!/data/test
 
 # Jupyter Notebook
 .ipynb_checkpoints

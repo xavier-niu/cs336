@@ -1,6 +1,10 @@
+import logging
 import os
 import regex
 from typing import BinaryIO
+
+
+logger = logging.getLogger(__name__)
 
 
 def find_chunk_boundaries(
@@ -50,19 +54,43 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def handle_rows(rows: list[bytes], vocab_map: dict[bytes, int]):
-    PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+|
-           ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    for row in rows:
-        for match in regex.finditer(PAT, row):
+def handle_buffer(
+    chunks: list[bytes],
+    vocab_map: dict[bytes, int],
+    spt_map: dict[bytes, int],
+    sp_tokens: set[bytes],
+    pat: bytes,
+):
+    for chunk in chunks:
+        if chunk in sp_tokens:
+            if chunk not in spt_map:
+                spt_map[chunk] = 0
+            spt_map[chunk] += 1
+            continue
+        for match in regex.finditer(pat, chunk):
             vocab = match.group()
             if vocab not in vocab_map:
                 vocab_map[vocab] = 0
             vocab_map[vocab] += 1
 
 
-def init_vocab_map(path: str, start: int, end: int, split_special_token: bytes) -> dict[bytes, int]:
+def init_vocab_map(
+    path: str, start: int, end: int, split_special_token: bytes, special_tokens: list[str]
+) -> tuple[dict[bytes, int], dict[bytes, int]]:
+    PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
     vocab_map: dict[bytes, int] = {}
+    spt_map: dict[bytes, int] = {}
+
+    # build regex pat for special tokens
+    sp_tokens = [x.encode("utf-8") for x in special_tokens]
+    if split_special_token not in sp_tokens:
+        sp_tokens.append(split_special_token)
+    sp_re_tokens = [regex.escape(x) for x in sp_tokens]
+    sp_re_tokens = sorted(sp_re_tokens, key=len, reverse=True)
+    sp_pat = b"|".join(sp_re_tokens)
+    sp_pat = b"(" + sp_pat + b")"
+    sp_tokens = set(sp_tokens)
 
     with open(path, "rb") as f:
         f.seek(start)
@@ -77,10 +105,14 @@ def init_vocab_map(path: str, start: int, end: int, split_special_token: bytes) 
             remaining -= len(data)
             buf += data
 
-            parts = buf.split(split_special_token)
-            buf = parts.pop()  # Keep the last part in the buffer for the next read
-            
-            handle_rows(parts, vocab_map)
+            chunks = regex.split(sp_pat, buf)
+            # move the last chunk to next round to avoid cut-off
+            buf = chunks.pop()
+            handle_buffer(chunks, vocab_map, spt_map, sp_tokens, PAT)
 
-    print(f"vocab map has been built for range [{start}, {end}]: map_len={len(vocab_map)}")
-    return vocab_map
+        if len(buf) != 0:
+            chunks = regex.split(sp_pat, buf)
+            handle_buffer(chunks, vocab_map, spt_map, sp_tokens, PAT)
+
+    logger.debug(f"vocab map slice for [{start}, {end}] has been built: size={len(vocab_map)}")
+    return (vocab_map, spt_map)
