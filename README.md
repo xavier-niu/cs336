@@ -2,6 +2,16 @@
 
 ## Daily Progress
 
+### 2026-07-01
+
+- Implemented the `compute_bpe` merge iteration: weighted pair counting
+  with a pair → (count, key-set) map, max selection with the
+  lexicographic tie-break, and applying the chosen merge to affected keys.
+- Fixed the merge-application loop (a `for i in range()` with `i += 1`
+  doesn't skip — switched to a `while` loop advancing by 2 on a match).
+- Added a unit test for `compute_bpe` and worked through expected-value
+  gotchas (1-element tuples need the trailing comma).
+
 ### 2026-06-29
 
 - Built the BPE `train` entry point: parallel `init_vocab_map` over file
