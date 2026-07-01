@@ -12,7 +12,7 @@ def test_init_vocab_map():
         f.seek(0, os.SEEK_END)
         end = f.tell()
 
-    actual_vocab_map, actual_spt_map = init_vocab_map(
+    actual_vocab_byte_tuple_map, actual_spt_map = init_vocab_map(
         str(DATA_PATH), 0, end, SPLIT_SPECIAL_TOKEN, ["<think>"]
     )
 
@@ -21,14 +21,24 @@ def test_init_vocab_map():
             b"Hello": 1,
             b" Hi": 1,
             b" hi": 2,
-            b"\n": 3,
+            b"\n": 4,
             b"hi": 1,
             b" test": 1,
             b" ": 1,
             b"\n\n": 2,
             b"test": 1,
+            b'"': 2,
+            b"hello": 1,
+            b",": 1,
+            b" my": 1,
+            b" friend": 1,
         },
         {b"<|endoftext|>": 2, b"<think>": 2},
     )
+    
+    actual_vocab_map = {}
+    for k, v in actual_vocab_byte_tuple_map.items():
+        new_k = b"".join(k)
+        actual_vocab_map[new_k] = v
     assert actual_vocab_map == expected[0]
     assert actual_spt_map == expected[1]

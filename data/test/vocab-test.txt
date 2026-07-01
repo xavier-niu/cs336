@@ -6,3 +6,4 @@ hi hi test <think>
 <|endoftext|>
 
 <think>test
+"hello, my friend"

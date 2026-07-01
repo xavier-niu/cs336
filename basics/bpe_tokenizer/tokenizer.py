@@ -38,8 +38,8 @@ def train(
         for vocab, spt in result_slice:
             for b, c in vocab.items():
                 if b not in vocab_map:
-                    vocab_map[[b]] = 0
-                vocab_map[[b]] += c
+                    vocab_map[b] = 0
+                vocab_map[b] += c
             for b, c in spt.items():
                 if b not in spt_map:
                     spt_map[b] = 0
@@ -57,4 +57,19 @@ def train(
 
 
 def compute_bpe(vocab_map: dict[tuple[bytes, ...], int], vocab_size: int, nproc: int) -> int:
+    """compute bpe
+    1. spawn child processes
+        1.1. iterate list
+            1.1.1. mapping big pair to count
+            1.1.2. mapping big pair to key
+    2. merge pairs by count locally
+    3. select the max
+    4. spawn child processes
+        4.1. iterate pairs
+            4.1.1. update key's tuple
+    """
+    
+    # with Pool(nproc) as pool:
+    #     items = list(vocab_map.items())
+
     pass

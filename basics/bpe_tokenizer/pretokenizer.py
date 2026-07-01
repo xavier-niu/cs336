@@ -56,7 +56,7 @@ def find_chunk_boundaries(
 
 def handle_buffer(
     chunks: list[bytes],
-    vocab_map: dict[bytes, int],
+    vocab_map: dict[tuple[bytes, ...], int],
     spt_map: dict[bytes, int],
     sp_tokens: set[bytes],
     pat: bytes,
@@ -69,6 +69,7 @@ def handle_buffer(
             continue
         for match in regex.finditer(pat, chunk):
             vocab = match.group()
+            vocab = tuple(vocab[i:i+1] for i in range(len(vocab)))
             if vocab not in vocab_map:
                 vocab_map[vocab] = 0
             vocab_map[vocab] += 1
@@ -76,10 +77,10 @@ def handle_buffer(
 
 def init_vocab_map(
     path: str, start: int, end: int, split_special_token: bytes, special_tokens: list[str]
-) -> tuple[dict[bytes, int], dict[bytes, int]]:
+) -> tuple[dict[tuple[bytes, ...], int], dict[bytes, int]]:
     PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
-    vocab_map: dict[bytes, int] = {}
+    vocab_map: dict[tuple[bytes, ...], int] = {}
     spt_map: dict[bytes, int] = {}
 
     # build regex pat for special tokens

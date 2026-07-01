@@ -2,6 +2,18 @@
 
 ## Daily Progress
 
+### 2026-06-29
+
+- Built the BPE `train` entry point: parallel `init_vocab_map` over file
+  chunks, then merges the per-process vocab and special-token maps.
+- Started `compute_bpe` and the byte-tuple pre-token representation
+  (`dict[tuple[bytes, ...], int]`) that the merge loop operates on.
+- Sketched the merge-iteration plan (count pairs → select max → apply)
+  and worked through why it should be incremental rather than
+  re-spawning processes and recounting every merge.
+- Studied why training returns both `vocab` and ordered `merges`, the
+  encoding complexity, the pre-token concept, and bytes/tuple conversions.
+
 ### 2026-06-28
 
 - Reworked special-token handling in pre-tokenization: a single `re.split`
