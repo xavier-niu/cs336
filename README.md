@@ -2,6 +2,18 @@
 
 ## Daily Progress
 
+### 2026-07-02
+
+- Completed `train`: fixed the stop condition (no infinite loop when merges
+  run out), added special tokens to the vocab from the input list, and
+  relaxed the chunk-count assertion for small inputs.
+- Wired the `run_train_bpe` adapter to `train`.
+- `test_train_bpe` and `test_train_bpe_special_tokens` pass — merges and
+  vocab match the reference exactly.
+- `test_train_bpe_speed` still fails (~3.2s vs 1.5s limit): the merge loop
+  does a full pair recount every iteration. Next: incremental pair-count
+  updates (reuse the per-pair key-sets) instead of recounting each merge.
+
 ### 2026-07-01
 
 - Implemented the `compute_bpe` merge iteration: weighted pair counting

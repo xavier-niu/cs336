@@ -24,41 +24,41 @@ def train(
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             init_vocab_map_args.append((input_path, start, end, split_token, special_tokens))
 
-    assert len(init_vocab_map_args) == nproc, (
-        f"Expected {nproc} chunks, but got {len(init_vocab_map_args)}"
-    )
-
     # init vocabulary map
     with Pool(nproc) as pool:
-        result_slice = pool.starmap(init_vocab_map, init_vocab_map_args)
+        vocab_map_partial = pool.starmap(init_vocab_map, init_vocab_map_args)
         vocab_map: dict[tuple[bytes, ...], int] = {}
-        spt_map: dict[bytes, int] = {}
 
         # merge them all
-        for vocab, spt in result_slice:
+        for vocab in vocab_map_partial:
             for b, c in vocab.items():
                 if b not in vocab_map:
                     vocab_map[b] = 0
                 vocab_map[b] += c
-            for b, c in spt.items():
-                if b not in spt_map:
-                    spt_map[b] = 0
-                spt_map[b] += c
-        logger.info(
-            f"vocab map has been built: vocab_map_size={len(vocab_map)}, spt_map_size={len(spt_map)}"
-        )
+        logger.info(f"vocab map has been built: vocab_map_size={len(vocab_map)}")
 
-    # 256 is the size of ascii
-    tokens_len = vocab_size - len(spt_map) - 256
-    tokens = []
-    while len(tokens) < tokens_len:
-        compute_bpe(vocab_map, tokens)
+    vocab = {}
+    token_id = 0
+    for i in range(256):
+        vocab[token_id] = bytes([i])
+        token_id += 1
+    for sp_token in special_tokens:
+        vocab[token_id] = sp_token.encode("utf-8")
+        token_id += 1
 
-    # todo
-    return ({}, [])
+    tokens_len = vocab_size - len(vocab)
+    trained_byte_pairs: list[tuple[bytes, bytes]] = []
+    while len(trained_byte_pairs) < tokens_len:
+        if not compute_bpe(vocab_map, trained_byte_pairs):
+            break
+        (b1, b2) = trained_byte_pairs[-1]
+        vocab[token_id] = b1 + b2
+        token_id += 1
+
+    return (vocab, trained_byte_pairs)
 
 
-def compute_bpe(vocab_map: dict[tuple[bytes, ...], int], tokens: list[bytes]):
+def compute_bpe(vocab_map: dict[tuple[bytes, ...], int], tokens: list[tuple[bytes, bytes]]) -> bool:
     # byte-pair to (count, key_set)
     bp_map: dict[tuple[bytes, bytes], tuple[int, set[tuple[bytes, ...]]]] = {}
     best_count = 0
@@ -78,11 +78,10 @@ def compute_bpe(vocab_map: dict[tuple[bytes, ...], int], tokens: list[bytes]):
                 tied_list.append(bp)
 
     if len(tied_list) == 0:
-        return
+        return False
 
     max_bp = max(tied_list)
-    max_bp_token = b"".join(max_bp)
-    tokens.append(max_bp_token)
+    tokens.append(max_bp)
     (_, key_set) = bp_map[max_bp]
     for k in key_set:
         count = vocab_map.pop(k)
@@ -99,3 +98,5 @@ def compute_bpe(vocab_map: dict[tuple[bytes, ...], int], tokens: list[bytes]):
                 new_k.append(k[i])
                 i += 1
         vocab_map[tuple(new_k)] = count
+
+    return True
