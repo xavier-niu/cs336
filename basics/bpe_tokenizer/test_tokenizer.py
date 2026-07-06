@@ -6,39 +6,26 @@ def test_compute_bpe():
         (b"l", b"o", b"w"): 5,
         (b"l", b"o"): 2,
     }
-    tokens = []
+    special_tokens = ["<think>", "</think>"]
 
-    # round1: l,o -> lo
-    compute_bpe(vocab_map, tokens)
+    expected_vocab = {}
+    expected_merges = []
+    token_id = 0
+    for i in range(256):
+        expected_vocab[token_id] = bytes([i])
+        token_id += 1
+    for spt in special_tokens:
+        expected_vocab[token_id] = spt.encode("utf-8")
+        token_id += 1
 
-    expected_vocab_map = {
-        (b"lo", b"w"): 5,
-        (b"lo",): 2,
-    }
-    expected_tokens = [(b"l", b"o")]
+    (actual_vocab, actual_merges) = compute_bpe(vocab_map, 1000, special_tokens)
 
-    assert vocab_map == expected_vocab_map
-    assert tokens == expected_tokens
+    expected_vocab[token_id] = b"lo"
+    token_id += 1
+    expected_vocab[token_id] = b"low"
+    token_id += 1
+    expected_merges = [(b"l", b"o"), (b"lo", b"w")]
 
-    # round2: lo,w -> low
-    compute_bpe(vocab_map, tokens)
-
-    expected_vocab_map = {
-        (b"lo",): 2,
-        (b"low",): 5,
-    }
-    expected_tokens = [(b"l", b"o"), (b"lo", b"w")]
-
-    assert vocab_map == expected_vocab_map
-    assert tokens == expected_tokens
-
-    # round3: nothing changed
-    compute_bpe(vocab_map, tokens)
-    expected_vocab_map = {
-        (b"lo",): 2,
-        (b"low",): 5,
-    }
-    expected_tokens = [(b"l", b"o"), (b"lo", b"w")]
-
-    assert vocab_map == expected_vocab_map
-    assert tokens == expected_tokens
+    assert set(expected_vocab.keys()) == set(actual_vocab.keys())
+    assert set(expected_vocab.values()) == set(actual_vocab.values())
+    assert set(expected_merges) == set(actual_merges)

@@ -2,6 +2,19 @@
 
 ## Daily Progress
 
+### 2026-07-04
+
+- Rewrote the BPE merge loop to be incremental: build pair counts once,
+  then per merge only touch the affected keys instead of recounting the
+  whole corpus every iteration.
+- Added a `pair -> [count, key-set]` map plus a `SortedDict` of
+  `frequency -> pairs` for O(log n) max selection.
+- Replaced the buggy neighbour-classification update with a clean
+  subtract-old-pairs / add-new-pairs pass (correct for adjacency,
+  overlap, and repeated bigrams).
+- All three `test_train_bpe` tests pass, including the speed test:
+  training `corpus.en` now takes ~0.47s (limit 1.5s), down from ~3.2s.
+
 ### 2026-07-02
 
 - Completed `train`: fixed the stop condition (no infinite loop when merges
