@@ -8,7 +8,7 @@ from basics.bpe_tokenizer.pretokenizer import find_chunk_boundaries, init_vocab_
 
 
 logger = logging.getLogger(__name__)
-SPLIT_SPECIAL_TOKEN = b"<|endoftext|>"
+SPLIT_SPECIAL_TOKEN = "<|endoftext|>"
 BytesPair = tuple[bytes, bytes]
 BytesTuple = tuple[bytes, ...]
 
@@ -20,13 +20,19 @@ def train(
     split_token=SPLIT_SPECIAL_TOKEN,
     nproc=None,
 ) -> tuple[dict[int, bytes], list[BytesPair]]:
+    if split_token not in special_tokens:
+        logger.info(f"split_token ({split_token}) does not exist in special_tokens, will append it")
+        special_tokens.append(split_token)
+
     if nproc is None:
         nproc = os.cpu_count() or 1
     init_vocab_map_args = []
     with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, nproc, split_token)
+        boundaries = find_chunk_boundaries(f, nproc, split_token.encode("utf-8"))
         for start, end in zip(boundaries[:-1], boundaries[1:]):
-            init_vocab_map_args.append((input_path, start, end, split_token, special_tokens))
+            init_vocab_map_args.append(
+                (input_path, start, end, split_token.encode("utf-8"), special_tokens)
+            )
 
     # init vocabulary map
     with Pool(nproc) as pool:
@@ -67,15 +73,6 @@ def compute_bpe(
     bp_map: dict[BytesPair, tuple[int, set[BytesTuple]]] = {}
     # frequency -> set(BytesPair)
     freq_to_bpset_map = SortedDict()
-
-    # def remove_bytes_pair(bp: BytesPair):
-    #     if bp not in bp_map:
-    #         return
-    #     (count, _) = bp_map.pop(bp)
-    #     if len(freq_to_bpset_map[count]) == 1:
-    #         freq_to_bpset_map.pop(count)
-    #     else:
-    #         freq_to_bpset_map[count].discard(bp)
 
     def incr_bytes_pair(bp: BytesPair, vocab: BytesTuple, vocab_count: int):
         entry = bp_map.setdefault(bp, [0, set()])

@@ -143,3 +143,30 @@ def decode_utf8_bytes_to_str(bytestring: bytes):
 character(s).
 
 \xff\xff: the leading 1 in the first byte must come with a zero.
+
+### Train BPE Tokenizer
+
+Train a byte-level BPE tokenizer on TinyStories with a maximum
+vocabulary size of 10,000 (the `<|endoftext|>` special token is added to
+the vocabulary):
+
+```shell
+$ uv run python basics/bpe_tokenizer/main.py --dataset TinyStoriesV2-GPT4-train
+```
+
+(a) How much time and memory did training take?
+
+- Time: ~115.7s (~1.9 min)
+- Peak RSS (main process): 0.24 GB
+- Peak RSS (per worker): 0.05 GB
+
+Training finishes in under 2 minutes, well within the 30-minute and
+30 GB limits. The ~0.24 GB main-process peak is the merge-loop
+high-water mark (single process, workers already joined); each
+pre-tokenization worker adds ~0.05 GB transiently.
+
+the longest tokens are
+`[b' accomplishment', b' disappointment', b' responsibility']`. It makes
+sense, the words are meaningful, also include the leading space. The
+longest token is essentially the longest frequency word in TinyStories.
+

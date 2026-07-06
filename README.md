@@ -2,6 +2,17 @@
 
 ## Daily Progress
 
+### 2026-07-06
+
+- Trained the full byte-level BPE tokenizer on TinyStories (vocab 10,000)
+  via `main.py`; ~1.9 min and ~0.24 GB peak RSS, well within limits.
+- Serialized vocab and merges to `outputs/` (gitignored) and added
+  `analyze.py` to inspect the result.
+- Longest tokens are 15-byte whole words (` accomplishment`,
+  ` disappointment`, ` responsibility`) — expected, since BPE merges
+  frequent long sequences into single tokens.
+- Documented the training results in the module README.
+
 ### 2026-07-04
 
 - Rewrote the BPE merge loop to be incremental: build pair counts once,
