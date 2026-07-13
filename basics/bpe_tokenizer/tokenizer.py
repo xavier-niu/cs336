@@ -3,6 +3,7 @@ from multiprocessing.pool import Pool
 import os
 
 from sortedcontainers import SortedDict
+from tqdm import tqdm
 
 from basics.bpe_tokenizer.pretokenizer import find_chunk_boundaries, init_vocab_map
 
@@ -83,6 +84,8 @@ def compute_bpe(
 
         if old_freq != 0:
             freq_to_bpset_map[old_freq].discard(bp)
+            if not freq_to_bpset_map[old_freq]:
+                del freq_to_bpset_map[old_freq]
         freq_to_bpset_map.setdefault(new_freq, set()).add(bp)
 
     def decr_bytes_pair(bp: BytesPair, vocab: BytesTuple, vocab_count: int):
@@ -98,6 +101,8 @@ def compute_bpe(
             vocab_set.discard(vocab)
 
         freq_to_bpset_map[old_freq].discard(bp)
+        if not freq_to_bpset_map[old_freq]:
+            del freq_to_bpset_map[old_freq]
         if new_freq > 0:
             freq_to_bpset_map.setdefault(new_freq, set()).add(bp)
 
@@ -110,45 +115,49 @@ def compute_bpe(
     for bp, (count, _) in bp_map.items():
         freq_to_bpset_map.setdefault(count, set()).add(bp)
 
-    # exit conditions:
-    # 1. reach upper limit of merges
-    # 2. nothing to be merged
-    while len(merges) < merges_len and len(freq_to_bpset_map) > 0:
-        (_, bp_set) = freq_to_bpset_map.peekitem(-1)
-        if len(bp_set) == 0:
-            freq_to_bpset_map.popitem(-1)
-            continue
+    with tqdm(total=vocab_size, desc="computing bpe tokenizer") as pbar:
+        pbar.update(len(vocab))
+        # exit conditions:
+        # 1. reach upper limit of merges
+        # 2. nothing to be merged
+        while len(merges) < merges_len and len(freq_to_bpset_map) > 0:
+            (_, bp_set) = freq_to_bpset_map.peekitem(-1)
+            if len(bp_set) == 0:
+                freq_to_bpset_map.popitem(-1)
+                continue
 
-        max_bp = max(bp_set)
-        new_bytes = b"".join(max_bp)
-        merges.append(max_bp)
-        vocab[token_id] = new_bytes
-        token_id += 1
+            max_bp = max(bp_set)
+            new_bytes = b"".join(max_bp)
+            merges.append(max_bp)
+            vocab[token_id] = new_bytes
+            token_id += 1
 
-        (_, vb_set) = bp_map[max_bp]
-        vb_set = [x for x in vb_set]
+            pbar.update(1)
 
-        for old_vocab in vb_set:
-            vocab_count = vocab_map.pop(old_vocab)
-            # get the new bytes tuple for vocab_map
-            new_vocab = []
-            i = 0
-            while i < len(old_vocab):
-                if i != len(old_vocab) - 1 and (old_vocab[i], old_vocab[i + 1]) == max_bp:
-                    new_vocab.append(b"".join(max_bp))
-                    i += 2
-                    continue
-                new_vocab.append(old_vocab[i])
-                i += 1
-            # update vocab_map with a bytes tuple after merged
-            new_vocab = tuple(new_vocab)
-            vocab_map[new_vocab] = vocab_count
+            (_, vb_set) = bp_map[max_bp]
+            vb_set = [x for x in vb_set]
 
-            old_bps = [p for p in zip(old_vocab[:-1], old_vocab[1:])]
-            new_bps = [p for p in zip(new_vocab[:-1], new_vocab[1:])]
-            for bp in old_bps:
-                decr_bytes_pair(bp, old_vocab, vocab_count)
-            for bp in new_bps:
-                incr_bytes_pair(bp, new_vocab, vocab_count)
+            for old_vocab in vb_set:
+                vocab_count = vocab_map.pop(old_vocab)
+                # get the new bytes tuple for vocab_map
+                new_vocab = []
+                i = 0
+                while i < len(old_vocab):
+                    if i != len(old_vocab) - 1 and (old_vocab[i], old_vocab[i + 1]) == max_bp:
+                        new_vocab.append(b"".join(max_bp))
+                        i += 2
+                        continue
+                    new_vocab.append(old_vocab[i])
+                    i += 1
+                # update vocab_map with a bytes tuple after merged
+                new_vocab = tuple(new_vocab)
+                vocab_map[new_vocab] = vocab_count
+
+                old_bps = [p for p in zip(old_vocab[:-1], old_vocab[1:])]
+                new_bps = [p for p in zip(new_vocab[:-1], new_vocab[1:])]
+                for bp in old_bps:
+                    decr_bytes_pair(bp, old_vocab, vocab_count)
+                for bp in new_bps:
+                    incr_bytes_pair(bp, new_vocab, vocab_count)
 
     return (vocab, merges)

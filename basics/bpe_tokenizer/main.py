@@ -10,7 +10,9 @@ from basics.bpe_tokenizer import tokenizer
 
 parser = argparse.ArgumentParser(description="Train BPE on a dataset")
 parser.add_argument("--dataset", help="dataset name, e.g. TinyStoriesV2-GPT4-train")
-parser.add_argument("--size", help="maximum vocabulary size, default is 10000", default=10000)
+parser.add_argument(
+    "--size", help="maximum vocabulary size, default is 10000", default=10000, type=int
+)
 args = parser.parse_args()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -29,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 print("BPE tokenizer is being trained...")
 start = time.perf_counter()
-(vocab, merges) = tokenizer.train(str(DATA_PATH), 10000, [])
+(vocab, merges) = tokenizer.train(str(DATA_PATH), args.size, [])
 end = time.perf_counter()
 
 elapsed = end - start

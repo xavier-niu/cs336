@@ -2,6 +2,19 @@
 
 ## Daily Progress
 
+### 2026-07-13
+
+- Fixed a memory leak in the BPE merge loop: empty frequency buckets in
+  the `SortedDict` were never deleted; now `incr`/`decr` remove a bucket
+  when it becomes empty (bounded memory, verified on OWT-valid at ~0.96 GB).
+- Added a tqdm progress bar to `compute_bpe` (counts up to the target
+  vocab size) and a `--size` CLI arg to `main.py`.
+- Downloaded the OpenWebText sample and started the 32k-vocab run, but
+  hit a performance wall: on OWT's ~6.4M unique pre-tokens the per-pair
+  `SortedDict` operations dominate (~33h ETA, climbing memory).
+- Next: optimize the merge loop for huge datasets (replace the sorted
+  frequency structure with a plain dict + decrementing running max).
+
 ### 2026-07-06
 
 - Trained the full byte-level BPE tokenizer on TinyStories (vocab 10,000)
