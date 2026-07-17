@@ -1,8 +1,9 @@
 import logging
 from multiprocessing.pool import Pool
 import os
+from pathlib import Path
+import pickle
 
-from sortedcontainers import SortedDict
 from tqdm import tqdm
 
 from basics.bpe_tokenizer.pretokenizer import find_chunk_boundaries, init_vocab_map
@@ -20,33 +21,43 @@ def train(
     special_tokens: list[str],
     split_token=SPLIT_SPECIAL_TOKEN,
     nproc=None,
+    pretoken_cache_path: Path | None = None,
 ) -> tuple[dict[int, bytes], list[BytesPair]]:
     if split_token not in special_tokens:
         logger.info(f"split_token ({split_token}) does not exist in special_tokens, will append it")
         special_tokens.append(split_token)
 
-    if nproc is None:
-        nproc = os.cpu_count() or 1
-    init_vocab_map_args = []
-    with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, nproc, split_token.encode("utf-8"))
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
-            init_vocab_map_args.append(
-                (input_path, start, end, split_token.encode("utf-8"), special_tokens)
-            )
+    if pretoken_cache_path is not None and pretoken_cache_path.exists():
+        with open(pretoken_cache_path, "rb") as f:
+            vocab_map = pickle.load(f)
+            logger.info("vocab_map is restored from cache")
+    else:
+        if nproc is None:
+            nproc = os.cpu_count() or 1
+        init_vocab_map_args = []
+        with open(input_path, "rb") as f:
+            boundaries = find_chunk_boundaries(f, nproc, split_token.encode("utf-8"))
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                init_vocab_map_args.append(
+                    (input_path, start, end, split_token.encode("utf-8"), special_tokens)
+                )
 
-    # init vocabulary map
-    with Pool(nproc) as pool:
-        vocab_map_partial = pool.starmap(init_vocab_map, init_vocab_map_args)
-        vocab_map: dict[BytesTuple, int] = {}
+        # init vocabulary map
+        with Pool(nproc) as pool:
+            vocab_map_partial = pool.starmap(init_vocab_map, init_vocab_map_args)
+            vocab_map: dict[BytesTuple, int] = {}
 
-        # merge them all
-        for vocab in vocab_map_partial:
-            for b, c in vocab.items():
-                if b not in vocab_map:
-                    vocab_map[b] = 0
-                vocab_map[b] += c
-        logger.info(f"vocab map has been built: vocab_map_size={len(vocab_map)}")
+            # merge them all
+            for vocab in vocab_map_partial:
+                for b, c in vocab.items():
+                    if b not in vocab_map:
+                        vocab_map[b] = 0
+                    vocab_map[b] += c
+            logger.info(f"vocab map has been built: vocab_map_size={len(vocab_map)}")
+
+        if pretoken_cache_path is not None:
+            with open(pretoken_cache_path, "wb") as f:
+                pickle.dump(vocab_map, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     return compute_bpe(vocab_map, vocab_size, special_tokens)
 
@@ -73,9 +84,12 @@ def compute_bpe(
     # - set[VocabBytesTuple]: related vocab bytes tuple
     bp_map: dict[BytesPair, tuple[int, set[BytesTuple]]] = {}
     # frequency -> set(BytesPair)
-    freq_to_bpset_map = SortedDict()
+    freq_to_bpset_map: dict[int, set[BytesPair]] = {}
+    max_freq = 0
 
     def incr_bytes_pair(bp: BytesPair, vocab: BytesTuple, vocab_count: int):
+        nonlocal max_freq
+
         entry = bp_map.setdefault(bp, [0, set()])
         old_freq = entry[0]
         new_freq = old_freq + vocab_count
@@ -87,6 +101,8 @@ def compute_bpe(
             if not freq_to_bpset_map[old_freq]:
                 del freq_to_bpset_map[old_freq]
         freq_to_bpset_map.setdefault(new_freq, set()).add(bp)
+        if max_freq < new_freq:
+            max_freq = new_freq
 
     def decr_bytes_pair(bp: BytesPair, vocab: BytesTuple, vocab_count: int):
         if bp not in bp_map:
@@ -111,6 +127,8 @@ def compute_bpe(
             entry = bp_map.setdefault((a, b), [0, set()])
             entry[0] += v
             entry[1].add(old_vocab)
+            if max_freq < entry[0]:
+                max_freq = entry[0]
 
     for bp, (count, _) in bp_map.items():
         freq_to_bpset_map.setdefault(count, set()).add(bp)
@@ -121,10 +139,13 @@ def compute_bpe(
         # 1. reach upper limit of merges
         # 2. nothing to be merged
         while len(merges) < merges_len and len(freq_to_bpset_map) > 0:
-            (_, bp_set) = freq_to_bpset_map.peekitem(-1)
-            if len(bp_set) == 0:
-                freq_to_bpset_map.popitem(-1)
-                continue
+            while max_freq not in freq_to_bpset_map and max_freq > 0:
+                max_freq -= 1
+
+            if max_freq <= 0:
+                break
+
+            bp_set = freq_to_bpset_map[max_freq]
 
             max_bp = max(bp_set)
             new_bytes = b"".join(max_bp)

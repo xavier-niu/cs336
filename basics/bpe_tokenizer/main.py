@@ -19,19 +19,21 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = REPO_ROOT / "data" / f"{args.dataset}.txt"
 VOCAB_PATH = REPO_ROOT / "outputs" / f"vocab-{args.dataset}.pkl"
 MERGES_PATH = REPO_ROOT / "outputs" / f"merges-{args.dataset}.pkl"
+PRETOKEN_CACHE_PATH = REPO_ROOT / "data" / f"pretoken-cache-{args.dataset}.txt"
 
 if not DATA_PATH.exists():
     raise SystemExit(f"{DATA_PATH} not found — run `bash data/download.sh` first")
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-print("BPE tokenizer is being trained...")
 start = time.perf_counter()
-(vocab, merges) = tokenizer.train(str(DATA_PATH), args.size, [])
+(vocab, merges) = tokenizer.train(
+    str(DATA_PATH), args.size, [], pretoken_cache_path=PRETOKEN_CACHE_PATH
+)
 end = time.perf_counter()
 
 elapsed = end - start
