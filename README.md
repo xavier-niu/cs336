@@ -2,6 +2,24 @@
 
 ## Daily Progress
 
+### 2026-07-19
+
+- Rewrote the `compute_bpe` merge loop around a stable integer-id
+  representation: `vocab_map` is now `id -> [bytes, count]` and `bp_map`'s
+  per-pair word-sets store ids instead of byte tuples. A merge only rewrites
+  the affected word's value in place, so unchanged pairs' membership sets need
+  no update — this removes the per-merge set churn that made OWT intractable.
+- Replaced the positional neighbour update with a `Counter`-based multiset
+  diff of the word's old vs new pairs. This handles overlapping/adjacent
+  merges correctly (e.g. `(a,a,a,a) -> (aa,aa)`) where the positional version
+  silently dropped the pair formed between two merged tokens.
+- Fixed a latent set-corruption bug: eviction of a word id from a pair's set
+  is now gated on the pair being *fully absent* from the new word
+  (`pair not in new_bps`), not merely decreased in count — a pair can drop
+  from 2→1 occurrences and must keep its id (partial-survivor case).
+- `test_train_bpe`, `test_train_bpe_special_tokens`, and
+  `test_train_bpe_speed` all pass (~1.5s).
+
 ### 2026-07-13
 
 - Fixed a memory leak in the BPE merge loop: empty frequency buckets in

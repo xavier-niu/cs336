@@ -1,3 +1,4 @@
+from collections import Counter
 import logging
 from multiprocessing.pool import Pool
 import os
@@ -75,66 +76,32 @@ def compute_bpe(
         vocab[token_id] = sp_token.encode("utf-8")
         token_id += 1
 
+    vocab_map = {idx: [vocab, count] for idx, (vocab, count) in enumerate(vocab_map.items())}
     merges_len = vocab_size - len(vocab)
     merges: list[BytesPair] = []
 
     # init bp_map
     # value tuple includes
     # - int: frequency
-    # - set[VocabBytesTuple]: related vocab bytes tuple
-    bp_map: dict[BytesPair, tuple[int, set[BytesTuple]]] = {}
+    # - set[int]: vocab index set
+    bp_map: dict[BytesPair, tuple[int, set[int]]] = {}
     # frequency -> set(BytesPair)
     freq_to_bpset_map: dict[int, set[BytesPair]] = {}
     max_freq = 0
 
-    def incr_bytes_pair(bp: BytesPair, vocab: BytesTuple, vocab_count: int):
-        nonlocal max_freq
-
-        entry = bp_map.setdefault(bp, [0, set()])
-        old_freq = entry[0]
-        new_freq = old_freq + vocab_count
-        entry[0] = new_freq
-        entry[1].add(vocab)
-
-        if old_freq != 0:
-            freq_to_bpset_map[old_freq].discard(bp)
-            if not freq_to_bpset_map[old_freq]:
-                del freq_to_bpset_map[old_freq]
-        freq_to_bpset_map.setdefault(new_freq, set()).add(bp)
-        if max_freq < new_freq:
-            max_freq = new_freq
-
-    def decr_bytes_pair(bp: BytesPair, vocab: BytesTuple, vocab_count: int):
-        if bp not in bp_map:
-            return
-
-        (old_freq, vocab_set) = bp_map[bp]
-        new_freq = old_freq - vocab_count
-        if new_freq <= 0:
-            bp_map.pop(bp)
-        else:
-            bp_map[bp][0] = new_freq
-            vocab_set.discard(vocab)
-
-        freq_to_bpset_map[old_freq].discard(bp)
-        if not freq_to_bpset_map[old_freq]:
-            del freq_to_bpset_map[old_freq]
-        if new_freq > 0:
-            freq_to_bpset_map.setdefault(new_freq, set()).add(bp)
-
-    for old_vocab, v in vocab_map.items():
-        for a, b in zip(old_vocab[:-1], old_vocab[1:]):
+    # init bp_map
+    for idx, (vocab_bytes, count) in vocab_map.items():
+        for a, b in zip(vocab_bytes[:-1], vocab_bytes[1:]):
             entry = bp_map.setdefault((a, b), [0, set()])
-            entry[0] += v
-            entry[1].add(old_vocab)
+            entry[0] += count
+            entry[1].add(idx)
             if max_freq < entry[0]:
                 max_freq = entry[0]
 
     for bp, (count, _) in bp_map.items():
         freq_to_bpset_map.setdefault(count, set()).add(bp)
 
-    with tqdm(total=vocab_size, desc="computing bpe tokenizer") as pbar:
-        pbar.update(len(vocab))
+    with tqdm(total=merges_len, desc="computing bpe tokenizer") as pbar:
         # exit conditions:
         # 1. reach upper limit of merges
         # 2. nothing to be merged
@@ -155,30 +122,94 @@ def compute_bpe(
 
             pbar.update(1)
 
-            (_, vb_set) = bp_map[max_bp]
-            vb_set = [x for x in vb_set]
+            # vocab_set includes vocabs containing max_bp
+            (_, vocab_set) = bp_map[max_bp]
+            vocab_set = [x for x in vocab_set]
 
-            for old_vocab in vb_set:
-                vocab_count = vocab_map.pop(old_vocab)
-                # get the new bytes tuple for vocab_map
-                new_vocab = []
+            # bp -> (orgin_freq, diff)
+            bp_freq_diff: dict[BytesPair, tuple[int, int]] = {}
+            # vocabs that need to be update: id -> new vocab_bytes
+            vocab_id_set: dict[int, BytesTuple] = {}
+
+            # iterate all vocabs of max_bp
+            for vocab_idx in vocab_set:
+                (old_vocab, vcount) = vocab_map[vocab_idx]
                 i = 0
+                new_vocab = []
+
+                # update new_vocab
                 while i < len(old_vocab):
                     if i != len(old_vocab) - 1 and (old_vocab[i], old_vocab[i + 1]) == max_bp:
-                        new_vocab.append(b"".join(max_bp))
+                        new_vocab.append(new_bytes)
                         i += 2
                         continue
                     new_vocab.append(old_vocab[i])
                     i += 1
-                # update vocab_map with a bytes tuple after merged
-                new_vocab = tuple(new_vocab)
-                vocab_map[new_vocab] = vocab_count
 
-                old_bps = [p for p in zip(old_vocab[:-1], old_vocab[1:])]
-                new_bps = [p for p in zip(new_vocab[:-1], new_vocab[1:])]
-                for bp in old_bps:
-                    decr_bytes_pair(bp, old_vocab, vocab_count)
-                for bp in new_bps:
-                    incr_bytes_pair(bp, new_vocab, vocab_count)
+                # update vocab_id_set
+                vocab_id_set[vocab_idx] = tuple(new_vocab)
+
+                old_bps = Counter(zip(old_vocab[:-1], old_vocab[1:]))
+                new_bps = Counter(zip(new_vocab[:-1], new_vocab[1:]))
+
+                rm_bps = old_bps - new_bps
+                add_bps = new_bps - old_bps
+
+                # remove bytes-pairs
+                # 1. update bp_freq_diff
+                # 2. remove vocab_idx from bp_map
+                for rm_bp, n in rm_bps.items():
+                    if rm_bp == max_bp:
+                        continue
+                    orig_bp_count, vocab_set1 = bp_map[rm_bp]
+                    if n > 0 and rm_bp not in new_bps:
+                        vocab_set1.discard(vocab_idx)
+                    entry = bp_freq_diff.setdefault(rm_bp, [orig_bp_count, 0])
+                    entry[1] -= n * vcount
+
+                # add bytes-pairs
+                for add_bp, n in add_bps.items():
+                    entry = bp_map.setdefault(add_bp, [0, set()])
+                    entry[1].add(vocab_idx)
+                    entry = bp_freq_diff.setdefault(add_bp, [entry[0], 0])
+                    entry[1] += n * vcount
+
+                # END: terate all vocabs of max_bp
+
+            # remove merged bp from bp_map and freq_to_bpset_map
+            (max_bp_count, _) = bp_map.pop(max_bp)
+            if len(freq_to_bpset_map[max_bp_count]) <= 1:
+                del freq_to_bpset_map[max_bp_count]
+            else:
+                freq_to_bpset_map[max_bp_count].discard(max_bp)
+
+            # update bp_map and freq_to_bpset_map
+            for bp, (orig, diff) in bp_freq_diff.items():
+                actual = orig + diff
+                if actual == 0:
+                    del bp_map[bp]
+                else:
+                    bp_map[bp][0] = actual
+
+                # skip if no changes
+                if orig == actual:
+                    continue
+
+                # update orig
+                if orig == 0:
+                    freq_to_bpset_map.setdefault(actual, set()).add(bp)
+                else:
+                    if len(freq_to_bpset_map[orig]) <= 1:
+                        del freq_to_bpset_map[orig]
+                    else:
+                        freq_to_bpset_map[orig].discard(bp)
+
+                # update actual
+                if actual > 0:
+                    freq_to_bpset_map.setdefault(actual, set()).add(bp)
+
+            # update vocab_map
+            for vocab_idx, new_vocab in vocab_id_set.items():
+                vocab_map[vocab_idx][0] = new_vocab
 
     return (vocab, merges)
