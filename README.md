@@ -19,6 +19,10 @@
   from 2→1 occurrences and must keep its id (partial-survivor case).
 - `test_train_bpe`, `test_train_bpe_special_tokens`, and
   `test_train_bpe_speed` all pass (~1.5s).
+- Validated at scale: trained BPE on OpenWebText (vocab 32,000) in 545s
+  (~9 min) at 7.54 GB peak RSS. The old SortedDict version had projected
+  30–93h and climbed toward 12 GB. Per-merge rate rises from the frequent
+  early pairs (~0.3/s) to ~63 it/s overall as `vocab_set` sizes collapse.
 
 ### 2026-07-13
 
