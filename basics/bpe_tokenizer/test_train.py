@@ -1,4 +1,4 @@
-from basics.bpe_tokenizer.tokenizer import compute_bpe
+from basics.bpe_tokenizer.train import compute_bpe
 
 
 def test_compute_bpe():

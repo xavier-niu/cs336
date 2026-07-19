@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from basics.bpe_tokenizer.pretokenizer import init_vocab_map
-from basics.bpe_tokenizer.tokenizer import SPLIT_SPECIAL_TOKEN
+from basics.bpe_tokenizer.train import SPLIT_SPECIAL_TOKEN
 
 
 def test_init_vocab_map():

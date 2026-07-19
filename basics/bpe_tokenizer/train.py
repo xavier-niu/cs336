@@ -1,9 +1,12 @@
+import argparse
 from collections import Counter
 import logging
 from multiprocessing.pool import Pool
 import os
 from pathlib import Path
 import pickle
+import resource
+import time
 
 from tqdm import tqdm
 
@@ -49,11 +52,11 @@ def train(
             vocab_map: dict[BytesTuple, int] = {}
 
             # merge them all
-            for vocab in vocab_map_partial:
-                for b, c in vocab.items():
-                    if b not in vocab_map:
-                        vocab_map[b] = 0
-                    vocab_map[b] += c
+            for partial_vocab in vocab_map_partial:
+                for byte_tuple, count in partial_vocab.items():
+                    if byte_tuple not in vocab_map:
+                        vocab_map[byte_tuple] = 0
+                    vocab_map[byte_tuple] += count
             logger.info(f"vocab map has been built: vocab_map_size={len(vocab_map)}")
 
         if pretoken_cache_path is not None:
@@ -76,7 +79,9 @@ def compute_bpe(
         vocab[token_id] = sp_token.encode("utf-8")
         token_id += 1
 
-    vocab_map = {idx: [vocab, count] for idx, (vocab, count) in enumerate(vocab_map.items())}
+    vocab_map = {
+        idx: [vocab_bytes, count] for idx, (vocab_bytes, count) in enumerate(vocab_map.items())
+    }
     merges_len = vocab_size - len(vocab)
     merges: list[BytesPair] = []
 
@@ -126,9 +131,9 @@ def compute_bpe(
             (_, vocab_set) = bp_map[max_bp]
             vocab_set = [x for x in vocab_set]
 
-            # bp -> (orgin_freq, diff)
+            # bp -> (origin_freq, diff)
             bp_freq_diff: dict[BytesPair, tuple[int, int]] = {}
-            # vocabs that need to be update: id -> new vocab_bytes
+            # vocabs that need to be updated: id -> new vocab_bytes
             vocab_id_set: dict[int, BytesTuple] = {}
 
             # iterate all vocabs of max_bp
@@ -174,8 +179,6 @@ def compute_bpe(
                     entry = bp_freq_diff.setdefault(add_bp, [entry[0], 0])
                     entry[1] += n * vcount
 
-                # END: terate all vocabs of max_bp
-
             # remove merged bp from bp_map and freq_to_bpset_map
             (max_bp_count, _) = bp_map.pop(max_bp)
             if len(freq_to_bpset_map[max_bp_count]) <= 1:
@@ -213,3 +216,49 @@ def compute_bpe(
                 vocab_map[vocab_idx][0] = new_vocab
 
     return (vocab, merges)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train BPE on a dataset")
+    parser.add_argument(
+        "--dataset", required=True, help="dataset name, e.g. TinyStoriesV2-GPT4-train"
+    )
+    parser.add_argument(
+        "--size", help="maximum vocabulary size, default is 10000", default=10000, type=int
+    )
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[2]
+    data_path = repo_root / "data" / f"{args.dataset}.txt"
+    vocab_path = repo_root / "outputs" / f"vocab-{args.dataset}.pkl"
+    merges_path = repo_root / "outputs" / f"merges-{args.dataset}.pkl"
+    pretoken_cache_path = repo_root / "data" / f"pretoken-cache-{args.dataset}.txt"
+
+    if not data_path.exists():
+        raise SystemExit(f"{data_path} not found — run `bash data/download.sh` first")
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+
+    start = time.perf_counter()
+    vocab, merges = train(str(data_path), args.size, [], pretoken_cache_path=pretoken_cache_path)
+    elapsed = time.perf_counter() - start
+    peak_self = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    peak_kids = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+
+    print("BPE tokenizer train is completed")
+    print(f"time:            {elapsed:.1f}s")
+    print(f"peak RSS (main): {peak_self / 1024**2:.2f} GB")
+    print(f"peak RSS (worker):{peak_kids / 1024**2:.2f} GB")
+
+    # Serialize vocab and merges
+    with open(vocab_path, "wb") as f:
+        pickle.dump(vocab, f)
+    with open(merges_path, "wb") as f:
+        pickle.dump(merges, f)
+
+
+if __name__ == "__main__":
+    main()

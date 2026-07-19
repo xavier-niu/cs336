@@ -72,13 +72,19 @@ def handle_buffer(
 
 
 def init_vocab_map(
-    path: str, start: int, end: int, split_special_token: bytes, special_tokens: list[str]
+    path: str,
+    start: int,
+    end: int,
+    split_special_token: str | bytes,
+    special_tokens: list[str],
 ) -> dict[tuple[bytes, ...], int]:
     PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
     vocab_map: dict[tuple[bytes, ...], int] = {}
 
     # build regex pat for special tokens
+    if isinstance(split_special_token, str):
+        split_special_token = split_special_token.encode("utf-8")
     sp_tokens = [x.encode("utf-8") for x in special_tokens]
     if split_special_token not in sp_tokens:
         sp_tokens.append(split_special_token)
