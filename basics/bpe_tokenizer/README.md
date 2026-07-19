@@ -170,3 +170,38 @@ the longest tokens are
 sense, the words are meaningful, also include the leading space. The
 longest token is essentially the longest frequency word in TinyStories.
 
+Train a byte-level BPE tokenizer on OpenWebText with a maximum vocabulary
+size of 32,000:
+
+```shell
+$ uv run python basics/bpe_tokenizer/main.py --dataset owt_train --size 32000
+```
+
+(a) How much time and memory did training take?
+
+- Time: ~544.9s (~9 min)
+- Peak RSS (main process): 7.54 GB
+
+Training finishes in under 10 minutes. The stable-id merge loop (id-keyed
+`vocab_map` plus a `Counter`-based multiset diff of each word's old/new
+pairs) is what makes this tractable — the earlier `SortedDict` version
+projected 30–93h and climbed toward 12 GB on the same data.
+
+The two longest tokens are both 64 bytes:
+
+- `b'----------------------------------------------------------------'` —
+  a run of 64 hyphens (a horizontal-rule / separator line).
+- `b'\xc3\x83\xc3\x82'` repeated 16 times — the string `ÃÂ` repeated, a
+  classic UTF-8/Latin-1 mojibake artifact (encoding corruption in scraped
+  pages).
+
+Both land on exactly 64 bytes because BPE merges repetitive runs in a
+doubling cascade (`-` → `--` → `----` → … → 64 = 2^6; the 4-byte `ÃÂ`
+unit doubles to 64 over four merges). 64 is where the cascade stopped
+within the 32k budget, not a hard cap.
+
+Unlike TinyStories, whose longest tokens are meaningful words, OWT's
+longest tokens are repetitive artifacts — layout characters and corrupted
+bytes. That contrast is the fingerprint of raw scraped web text versus a
+curated dataset.
+
