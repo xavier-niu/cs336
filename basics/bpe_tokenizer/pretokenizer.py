@@ -65,10 +65,22 @@ def handle_buffer(
             continue
         for match in regex.finditer(pat, chunk):
             vocab = match.group()
-            vocab = tuple(vocab[i:i+1] for i in range(len(vocab)))
+            vocab = tuple(vocab[i : i + 1] for i in range(len(vocab)))
             if vocab not in vocab_map:
                 vocab_map[vocab] = 0
             vocab_map[vocab] += 1
+
+
+def special_tokens_pat(sp_tokens: list[str]) -> bytes:
+    sp_tokens = [x.encode("utf-8") for x in sp_tokens]
+    sp_re_tokens = [regex.escape(x) for x in sp_tokens]
+    sp_re_tokens = sorted(sp_re_tokens, key=len, reverse=True)
+    sp_pat = b"|".join(sp_re_tokens)
+    sp_pat = b"(" + sp_pat + b")"
+    return sp_pat
+
+
+PRETOKEN_PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 
 def init_vocab_map(
@@ -78,21 +90,13 @@ def init_vocab_map(
     split_special_token: str | bytes,
     special_tokens: list[str],
 ) -> dict[tuple[bytes, ...], int]:
-    PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-
     vocab_map: dict[tuple[bytes, ...], int] = {}
 
     # build regex pat for special tokens
     if isinstance(split_special_token, str):
         split_special_token = split_special_token.encode("utf-8")
-    sp_tokens = [x.encode("utf-8") for x in special_tokens]
-    if split_special_token not in sp_tokens:
-        sp_tokens.append(split_special_token)
-    sp_re_tokens = [regex.escape(x) for x in sp_tokens]
-    sp_re_tokens = sorted(sp_re_tokens, key=len, reverse=True)
-    sp_pat = b"|".join(sp_re_tokens)
-    sp_pat = b"(" + sp_pat + b")"
-    sp_tokens = set(sp_tokens)
+    sp_pat = special_tokens_pat(special_tokens)
+    sp_tokens = set([x.encode("utf-8") for x in special_tokens])
 
     with open(path, "rb") as f:
         f.seek(start)
@@ -110,11 +114,11 @@ def init_vocab_map(
             chunks = regex.split(sp_pat, buf)
             # move the last chunk to next round to avoid cut-off
             buf = chunks.pop()
-            handle_buffer(chunks, vocab_map, sp_tokens, PAT)
+            handle_buffer(chunks, vocab_map, sp_tokens, PRETOKEN_PAT)
 
         if len(buf) != 0:
             chunks = regex.split(sp_pat, buf)
-            handle_buffer(chunks, vocab_map, sp_tokens, PAT)
+            handle_buffer(chunks, vocab_map, sp_tokens, PRETOKEN_PAT)
 
     logger.debug(f"vocab map slice for [{start}, {end}] has been built: size={len(vocab_map)}")
     return vocab_map

@@ -10,13 +10,11 @@ import time
 
 from tqdm import tqdm
 
+from basics.bpe_tokenizer import SPLIT_SPECIAL_TOKEN, BytesPair, BytesTuple
 from basics.bpe_tokenizer.pretokenizer import find_chunk_boundaries, init_vocab_map
 
 
 logger = logging.getLogger(__name__)
-SPLIT_SPECIAL_TOKEN = "<|endoftext|>"
-BytesPair = tuple[bytes, bytes]
-BytesTuple = tuple[bytes, ...]
 
 
 def train(

@@ -2,6 +2,22 @@
 
 ## Daily Progress
 
+### 2026-08-11
+
+- Implemented the byte-level `Tokenizer` core: vocabulary lookup maps,
+  merge-rank application to a fixed point, file loading, and GPT-2 regex
+  pre-tokenization so merges cannot cross letter/punctuation boundaries.
+- Added longest-first special-token splitting and encoding, plus decoding that
+  concatenates token bytes before UTF-8 conversion so multi-byte Unicode and
+  merged tokens round-trip correctly.
+- Moved shared tokenizer constants and regex helpers into the package and
+  pre-tokenizer modules for reuse between training and encoding.
+- Added focused unit coverage for merge priority, repeated and chained merges,
+  ASCII/Unicode input, pre-token boundaries, overlapping special tokens, and
+  decode behavior; all 25 focused tokenizer tests pass.
+- Next: implement streaming `encode_iterable` and wire the assignment adapter
+  to the tokenizer implementation.
+
 ### 2026-07-19
 
 - Rewrote the `compute_bpe` merge loop around a stable integer-id
