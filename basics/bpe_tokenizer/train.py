@@ -250,6 +250,9 @@ def main() -> None:
     print(f"time:            {elapsed:.1f}s")
     print(f"peak RSS (main): {peak_self / 1024**2:.2f} GB")
     print(f"peak RSS (worker):{peak_kids / 1024**2:.2f} GB")
+    
+    if not vocab_path.parent.exists():
+        vocab_path.parent.mkdir()
 
     # Serialize vocab and merges
     with open(vocab_path, "wb") as f:
