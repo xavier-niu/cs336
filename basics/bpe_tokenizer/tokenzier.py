@@ -85,8 +85,42 @@ class Tokenizer:
         return ret
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
-        pass
+        sp_pat = special_tokens_pat(self.speical_tokens)
+        last: bytes | None = None
+        for subtext in iterable:
+            text = subtext.encode("utf-8")
+            if last is not None:
+                text = b"".join([last, text])
+            chunks = regex.split(sp_pat, text)
+            if len(chunks) > 0:
+                last = chunks.pop()
+            else:
+                last = None
+            for chunk in chunks:
+                chunk_str = chunk.decode("utf-8")
+                if chunk_str in self.speical_tokens:
+                    yield self.vocab_rmap[chunk]
+                else:
+                    for pretoken in regex.finditer(PRETOKEN_PAT, chunk):
+                        pretoken = pretoken.group()
+                        tokens = self.text_to_token_ids(pretoken.decode("utf-8"))
+                        for token in tokens:
+                            yield token
+
+        if last is not None:
+            text = last
+            chunks = regex.split(sp_pat, text)
+            for chunk in chunks:
+                chunk_str = chunk.decode("utf-8")
+                if chunk_str in self.speical_tokens:
+                    yield self.vocab_rmap[chunk]
+                else:
+                    for pretoken in regex.finditer(PRETOKEN_PAT, chunk):
+                        pretoken = pretoken.group()
+                        tokens = self.text_to_token_ids(pretoken.decode("utf-8"))
+                        for token in tokens:
+                            yield token
 
     def decode(self, ids: list[int]) -> str:
         str_bytes = [self.vocab_map[idx] for idx in ids]
-        return b"".join(str_bytes).decode("utf-8")
+        return b"".join(str_bytes).decode("utf-8", errors='replace')

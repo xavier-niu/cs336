@@ -1,5 +1,7 @@
+import pickle
 import signal
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -240,3 +242,181 @@ def test_decode_handles_special_tokens() -> None:
     actual = tokenizer.decode(token_ids(tokenizer, [b"a", special_token.encode("utf-8"), b"b"]))
 
     assert actual == f"a{special_token}b"
+
+
+def test_encode_iterable_returns_no_tokens_for_empty_iterable() -> None:
+    tokenizer = make_tokenizer()
+
+    actual = list(tokenizer.encode_iterable([]))
+
+    assert actual == []
+
+
+def test_encode_iterable_matches_encode_for_a_single_chunk() -> None:
+    tokenizer = make_tokenizer([(b"a", b"b"), (b"ab", b"c")])
+    text = "abc def"
+
+    actual = list(tokenizer.encode_iterable([text]))
+
+    assert actual == tokenizer.encode(text)
+
+
+def test_encode_iterable_returns_a_lazy_iterator() -> None:
+    tokenizer = make_tokenizer()
+
+    result = tokenizer.encode_iterable(["cat"])
+
+    assert iter(result) is result
+    assert next(result) == tokenizer.encode("cat")[0]
+
+
+def test_encode_iterable_merges_a_pair_split_across_chunk_boundary() -> None:
+    tokenizer = make_tokenizer([(b"a", b"b")])
+
+    actual = list(tokenizer.encode_iterable(["a", "b"]))
+
+    assert actual == tokenizer.encode("ab")
+    assert actual == token_ids(tokenizer, [b"ab"])
+
+
+def test_encode_iterable_special_token_split_across_chunk_boundary() -> None:
+    special_token = "<special>"
+    tokenizer = make_tokenizer(special_tokens=[special_token])
+    text = f"a{special_token}b"
+
+    actual = list(tokenizer.encode_iterable(["a<spec", "ial>b"]))
+
+    assert actual == tokenizer.encode(text)
+
+
+def test_encode_iterable_special_token_split_one_character_at_a_time() -> None:
+    special_token = "<special>"
+    tokenizer = make_tokenizer(special_tokens=[special_token])
+    text = f"a{special_token}b"
+
+    actual = list(tokenizer.encode_iterable(list(text)))
+
+    assert actual == tokenizer.encode(text)
+
+
+def test_encode_iterable_flushes_trailing_text_with_no_special_token() -> None:
+    tokenizer = make_tokenizer([(b"a", b"b"), (b"ab", b"c")])
+
+    actual = list(tokenizer.encode_iterable(["a", "b", "c"]))
+
+    assert actual == tokenizer.encode("abc")
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 3, 5])
+def test_encode_iterable_matches_encode_regardless_of_chunking(chunk_size: int) -> None:
+    special_token = "<special>"
+    tokenizer = make_tokenizer([(b"a", b"b"), (b"ab", b"c")], special_tokens=[special_token])
+    text = f"abc def{special_token}ghi abc"
+    expected = tokenizer.encode(text)
+
+    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    actual = list(tokenizer.encode_iterable(chunks))
+
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("", id="empty-text"),
+        pytest.param("abc", id="fully-merged-text"),
+        pytest.param("hello world", id="text-with-space"),
+        pytest.param("é", id="two-byte-unicode"),
+        pytest.param("🙂", id="four-byte-unicode"),
+        pytest.param("a\nb\n\nc", id="newlines"),
+        pytest.param("  leading and trailing  ", id="surrounding-whitespace"),
+        pytest.param("a<special>b", id="embedded-special-token"),
+        pytest.param("<special><special>", id="adjacent-special-tokens"),
+        pytest.param("<special>", id="only-a-special-token"),
+    ],
+)
+def test_decode_inverts_encode(text: str) -> None:
+    tokenizer = make_tokenizer([(b"a", b"b"), (b"ab", b"c")], special_tokens=["<special>"])
+
+    assert tokenizer.decode(tokenizer.encode(text)) == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("abc def<special>ghi", id="mixed-text-and-special-token"),
+        pytest.param("héllo 🙂 wörld", id="unicode-text"),
+    ],
+)
+def test_decode_inverts_encode_iterable(text: str) -> None:
+    tokenizer = make_tokenizer([(b"a", b"b"), (b"ab", b"c")], special_tokens=["<special>"])
+
+    ids = list(tokenizer.encode_iterable(list(text)))
+
+    assert tokenizer.decode(ids) == text
+
+
+@pytest.mark.parametrize(
+    ("tokens", "expected"),
+    [
+        pytest.param([b"\xff"], "�", id="byte-that-never-starts-a-sequence"),
+        pytest.param([b"\x80"], "�", id="lone-continuation-byte"),
+        pytest.param([b"\xc3"], "�", id="truncated-two-byte-sequence"),
+        pytest.param([b"a", b"\xff", b"b"], "a�b", id="invalid-byte-between-valid-ones"),
+    ],
+)
+def test_decode_replaces_malformed_bytes_with_the_replacement_character(
+    tokens: list[bytes], expected: str
+) -> None:
+    """Token ids are arbitrary user input, so decode must not raise on invalid UTF-8.
+
+    The handout requires replacing malformed bytes with U+FFFD (via
+    ``bytes.decode(errors="replace")``) rather than propagating a
+    ``UnicodeDecodeError``.
+    """
+    tokenizer = make_tokenizer()
+
+    actual = tokenizer.decode(token_ids(tokenizer, tokens))
+
+    assert actual == expected
+
+
+def test_from_files_loads_a_pickled_vocab_and_merges(tmp_path: Path) -> None:
+    merges = [(b"a", b"b")]
+    vocab = {token_id: bytes([token_id]) for token_id in range(256)}
+    vocab[len(vocab)] = b"ab"
+    vocab[len(vocab)] = SPLIT_SPECIAL_TOKEN.encode("utf-8")
+
+    vocab_path = tmp_path / "vocab.pkl"
+    merges_path = tmp_path / "merges.pkl"
+    with open(vocab_path, "wb") as vocab_file:
+        pickle.dump(vocab, vocab_file)
+    with open(merges_path, "wb") as merges_file:
+        pickle.dump(merges, merges_file)
+
+    tokenizer = Tokenizer.from_files(str(vocab_path), str(merges_path))
+
+    assert tokenizer.vocab_map == vocab
+    assert tokenizer.encode("ab") == token_ids(tokenizer, [b"ab"])
+
+
+def test_from_files_accepts_special_tokens(tmp_path: Path) -> None:
+    special_token = "<special>"
+    vocab = {token_id: bytes([token_id]) for token_id in range(256)}
+    vocab[len(vocab)] = special_token.encode("utf-8")
+    vocab[len(vocab)] = SPLIT_SPECIAL_TOKEN.encode("utf-8")
+
+    vocab_path = tmp_path / "vocab.pkl"
+    merges_path = tmp_path / "merges.pkl"
+    with open(vocab_path, "wb") as vocab_file:
+        pickle.dump(vocab, vocab_file)
+    with open(merges_path, "wb") as merges_file:
+        pickle.dump([], merges_file)
+
+    tokenizer = Tokenizer.from_files(
+        str(vocab_path), str(merges_path), special_tokens=[special_token]
+    )
+
+    actual = tokenizer.encode(f"a{special_token}b")
+
+    assert actual == token_ids(tokenizer, [b"a", special_token.encode("utf-8"), b"b"])
