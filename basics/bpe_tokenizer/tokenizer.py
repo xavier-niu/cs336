@@ -5,7 +5,7 @@ from typing import Iterable, Iterator
 import regex
 
 from basics.bpe_tokenizer import SPLIT_SPECIAL_TOKEN
-from basics.bpe_tokenizer.pretokenizer import PRETOKEN_PAT, special_tokens_pat
+from basics.bpe_tokenizer.pretokenizer import PRETOKEN_PAT_STR, special_tokens_pat_str
 
 
 class Tokenizer:
@@ -17,7 +17,7 @@ class Tokenizer:
     ):
         # vocab map: token id -> bytes
         self.vocab_map = vocab
-        # vocab reversed map: bytes -> token id
+        # vocab reversed map: str -> token id
         self.vocab_rmap = {b: idx for idx, b in self.vocab_map.items()}
         # merges set
         self.merges = {merge: idx for idx, merge in enumerate(merges)}
@@ -28,8 +28,9 @@ class Tokenizer:
             self.speical_tokens = special_tokens
         if SPLIT_SPECIAL_TOKEN not in self.speical_tokens:
             self.speical_tokens.append(SPLIT_SPECIAL_TOKEN)
-        
-        self.sp_pat = special_tokens_pat(self.speical_tokens)
+
+        self.sp_pat = special_tokens_pat_str(self.speical_tokens)
+        self.cache: dict[str, list[int]] = {}
 
         assert 256 + len(self.merges) + len(self.speical_tokens) == len(self.vocab_map)
 
@@ -46,6 +47,9 @@ class Tokenizer:
         return cls(vocab, merges, special_tokens)
 
     def text_to_token_ids(self, text: str) -> list[int]:
+        cached = self.cache.get(text)
+        if cached is not None:
+            return cached
         btext = text.encode("utf-8")
         btext_array = [btext[i : i + 1] for i in range(len(btext))]
 
@@ -70,40 +74,39 @@ class Tokenizer:
                 i += 1
             btext_array = btext_array_next
 
-        return [self.vocab_rmap[b] for b in btext_array]
+        tokens = [self.vocab_rmap[b] for b in btext_array]
+        self.cache[text] = tokens
+        return tokens
 
     def encode(self, text: str) -> list[int]:
-        chunks = regex.split(self.sp_pat, text.encode("utf-8"))
+        chunks = regex.split(self.sp_pat, text)
         ret = []
         for chunk in chunks:
-            chunk_str = chunk.decode("utf-8")
-            if chunk_str in self.speical_tokens:
-                ret.append(self.vocab_rmap[chunk])
+            if chunk in self.speical_tokens:
+                ret.append(self.vocab_rmap[chunk.encode()])
             else:
-                for pretoken in regex.finditer(PRETOKEN_PAT, chunk):
+                for pretoken in regex.finditer(PRETOKEN_PAT_STR, chunk):
                     pretoken = pretoken.group()
-                    ret.extend(self.text_to_token_ids(pretoken.decode("utf-8")))
+                    ret.extend(self.text_to_token_ids(pretoken))
         return ret
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
-        last: bytes | None = None
+        last: str | None = None
         for subtext in iterable:
-            text = subtext.encode("utf-8")
             if last is not None:
-                text = b"".join([last, text])
-            chunks = regex.split(self.sp_pat, text)
+                subtext = "".join([last, subtext])
+            chunks = regex.split(self.sp_pat, subtext)
             if len(chunks) > 0:
                 last = chunks.pop()
             else:
                 last = None
             for chunk in chunks:
-                chunk_str = chunk.decode("utf-8")
-                if chunk_str in self.speical_tokens:
-                    yield self.vocab_rmap[chunk]
+                if chunk in self.speical_tokens:
+                    yield self.vocab_rmap[chunk.encode()]
                 else:
-                    for pretoken in regex.finditer(PRETOKEN_PAT, chunk):
+                    for pretoken in regex.finditer(PRETOKEN_PAT_STR, chunk):
                         pretoken = pretoken.group()
-                        tokens = self.text_to_token_ids(pretoken.decode("utf-8"))
+                        tokens = self.text_to_token_ids(pretoken)
                         for token in tokens:
                             yield token
 
@@ -111,16 +114,15 @@ class Tokenizer:
             text = last
             chunks = regex.split(self.sp_pat, text)
             for chunk in chunks:
-                chunk_str = chunk.decode("utf-8")
-                if chunk_str in self.speical_tokens:
-                    yield self.vocab_rmap[chunk]
+                if chunk in self.speical_tokens:
+                    yield self.vocab_rmap[chunk.encode()]
                 else:
-                    for pretoken in regex.finditer(PRETOKEN_PAT, chunk):
+                    for pretoken in regex.finditer(PRETOKEN_PAT_STR, chunk):
                         pretoken = pretoken.group()
-                        tokens = self.text_to_token_ids(pretoken.decode("utf-8"))
+                        tokens = self.text_to_token_ids(pretoken)
                         for token in tokens:
                             yield token
 
     def decode(self, ids: list[int]) -> str:
         str_bytes = [self.vocab_map[idx] for idx in ids]
-        return b"".join(str_bytes).decode("utf-8", errors='replace')
+        return b"".join(str_bytes).decode("utf-8", errors="replace")

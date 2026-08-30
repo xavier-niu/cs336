@@ -2,6 +2,36 @@
 
 ## Daily Progress
 
+### 2026-08-30
+
+- Measured compression ratios over sampled documents: 4.09 bytes/token on
+  TinyStories and 4.38 on OWT with their own tokenizers. Cross-applying them
+  showed the asymmetry — OWT's tokenizer still handles TinyStories text well
+  (4.10), but TinyStories' narrow vocabulary collapses on web text (2.87).
+- Profiled `encode` and found the bottleneck was not the O(n^2) merge loop:
+  pre-tokens average 4 bytes, so the quadratic rescan costs ~3 pair checks per
+  input byte. The real waste was repetition — only 1.2% of pre-tokens are
+  distinct, so the same merge sequence was recomputed hundreds of thousands
+  of times. Added a per-instance cache (per-instance so two tokenizers in one
+  process cannot share entries) and moved `encode` to a `str` pipeline,
+  removing the bytes/str round trip. Throughput went 803 KB/s to ~5.6 MB/s,
+  putting the full 11.9 GB OWT pass at roughly half an hour.
+- Fixed two bugs the tests caught: `special_tokens_pat_str` computed its
+  pattern but never returned it, and re-keying `vocab_rmap` by `str` fails
+  because single bytes 0x80-0xFF are not valid UTF-8 on their own. Only
+  special tokens are guaranteed round-trippable, so the map stays bytes-keyed.
+- Added `tokenize_dataset.py` to serialize datasets as `uint16`: ids stream
+  into a reusable pre-allocated block buffer that flushes with `tofile`, so
+  memory stays flat regardless of corpus size, with a tqdm bar measuring
+  progress on the input side (`encode_iterable` yields ids, which say nothing
+  about file position, and `tell()` is disabled during text-mode iteration).
+- Renamed the script from `tokenize.py`, which shadowed the stdlib module and
+  broke `numpy` via `inspect` when run by path.
+- Added unit coverage for the serializer — round-trip, separator counts,
+  awkward Unicode, empty input, and vocab-range checks; 77 tests pass.
+- Next: run the full TinyStories and OWT tokenization, and answer why `uint16`
+  is the right dtype.
+
 ### 2026-08-11
 
 - Implemented the byte-level `Tokenizer` core: vocabulary lookup maps,

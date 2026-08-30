@@ -80,7 +80,12 @@ def special_tokens_pat(sp_tokens: list[str]) -> bytes:
     return sp_pat
 
 
+def special_tokens_pat_str(sp_tokens: list[str]) -> str:
+    return special_tokens_pat(sp_tokens).decode()
+
+
 PRETOKEN_PAT = rb"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+PRETOKEN_PAT_STR = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 
 def init_vocab_map(

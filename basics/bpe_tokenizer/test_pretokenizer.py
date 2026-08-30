@@ -12,8 +12,10 @@ def test_init_vocab_map():
         f.seek(0, os.SEEK_END)
         end = f.tell()
 
+    # ``train.py`` appends the split token to ``special_tokens`` before calling
+    # ``init_vocab_map``, so mirror that calling convention here.
     actual_vocab_byte_tuple_map = init_vocab_map(
-        str(DATA_PATH), 0, end, SPLIT_SPECIAL_TOKEN, ["<think>"]
+        str(DATA_PATH), 0, end, SPLIT_SPECIAL_TOKEN, ["<think>", SPLIT_SPECIAL_TOKEN]
     )
 
     expected = (
