@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from basics.bpe_tokenizer.tokenzier import Tokenizer
+from basics.bpe_tokenizer.tokenizer import Tokenizer
 from basics.bpe_tokenizer.train import train
 
 

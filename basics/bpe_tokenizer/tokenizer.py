@@ -28,6 +28,8 @@ class Tokenizer:
             self.speical_tokens = special_tokens
         if SPLIT_SPECIAL_TOKEN not in self.speical_tokens:
             self.speical_tokens.append(SPLIT_SPECIAL_TOKEN)
+        
+        self.sp_pat = special_tokens_pat(self.speical_tokens)
 
         assert 256 + len(self.merges) + len(self.speical_tokens) == len(self.vocab_map)
 
@@ -71,8 +73,7 @@ class Tokenizer:
         return [self.vocab_rmap[b] for b in btext_array]
 
     def encode(self, text: str) -> list[int]:
-        sp_pat = special_tokens_pat(self.speical_tokens)
-        chunks = regex.split(sp_pat, text.encode("utf-8"))
+        chunks = regex.split(self.sp_pat, text.encode("utf-8"))
         ret = []
         for chunk in chunks:
             chunk_str = chunk.decode("utf-8")
@@ -85,13 +86,12 @@ class Tokenizer:
         return ret
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
-        sp_pat = special_tokens_pat(self.speical_tokens)
         last: bytes | None = None
         for subtext in iterable:
             text = subtext.encode("utf-8")
             if last is not None:
                 text = b"".join([last, text])
-            chunks = regex.split(sp_pat, text)
+            chunks = regex.split(self.sp_pat, text)
             if len(chunks) > 0:
                 last = chunks.pop()
             else:
@@ -109,7 +109,7 @@ class Tokenizer:
 
         if last is not None:
             text = last
-            chunks = regex.split(sp_pat, text)
+            chunks = regex.split(self.sp_pat, text)
             for chunk in chunks:
                 chunk_str = chunk.decode("utf-8")
                 if chunk_str in self.speical_tokens:

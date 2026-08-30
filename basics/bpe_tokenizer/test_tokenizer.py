@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from basics.bpe_tokenizer import SPLIT_SPECIAL_TOKEN
-from basics.bpe_tokenizer.tokenzier import Tokenizer
+from basics.bpe_tokenizer.tokenizer import Tokenizer
 
 
 def make_tokenizer(
