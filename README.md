@@ -26,6 +26,9 @@
   match. `test_linear` passes.
 - Next: the `Embedding` module.
 
+<details>
+<summary>Earlier updates</summary>
+
 ### 2026-08-30
 
 - Measured compression ratios over sampled documents: 4.09 bytes/token on
@@ -188,6 +191,8 @@
   `multiprocessing` for parallelizing pre-tokenization.
 - Started unit tests for `handle_rows` and worked through `re` vs `regex` and
   `str`/`bytes` issues surfaced by the tests.
+
+</details>
 
 ## Resources
 

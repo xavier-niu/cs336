@@ -84,6 +84,24 @@ When the user asks to commit:
 1. **Daily progress (default).** Update the daily-progress log in the repo-root
    `README.md`. If an entry for today's date already exists, update that entry;
    otherwise add a new entry for today. Then commit and push.
+
+   Keep only the latest entry visible as a `### YYYY-MM-DD` section. All
+   older entries live, as `###` sections, inside a single collapsed block
+   directly below it:
+
+   ```markdown
+   <details>
+   <summary>Earlier updates</summary>
+
+   ### YYYY-MM-DD
+   ...
+
+   </details>
+   ```
+
+   When adding a new day, put it above the block and move the previous latest
+   entry to the top of the block. Updating today's existing entry needs no
+   move.
 2. **Functionality.** The user sometimes instead asks to commit a specific
    piece of functionality. When it is not clear which kind of commit the user
    wants, ask them for the commit type (daily progress vs. functionality)
