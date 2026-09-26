@@ -2,6 +2,30 @@
 
 ## Daily Progress
 
+### 2026-09-25
+
+- Started the Transformer LM with `basics/transformer/layers.py`: a `Linear`
+  module subclassing `nn.Module`, with the weight stored as `W` of shape
+  `(d_out, d_in)` (not `W^T`) and applied with a named-dimension
+  `einops.einsum`, so no explicit transpose is needed.
+- Worked through the conventions behind the layout: math's `y = Wx` vs
+  PyTorch's row-vector `y = xW^T`, and why row-major memory order is a
+  separate concept — storing `W` keeps `d_in` contiguous, matches
+  `nn.Linear`, and lets reference checkpoints load as-is (a transposed
+  weight would load silently wrong whenever `d_in == d_out`).
+- Initialized the weight with truncated normal Xavier/Glorot init. Fixed a
+  bug where the variance `2/(d_in+d_out)` was passed as `std`, making the
+  weights ~28x too small; `std` is its square root, with cutoffs at ±3σ.
+- Learned the `nn.Parameter` mechanics: wrapping registers the tensor with
+  the module (so it reaches `parameters()`, `state_dict()` and `.to()`),
+  `device`/`dtype` of `None` fall through to PyTorch defaults, and
+  `backward` fills `.grad` while the optimizer performs the update.
+- Wired `run_linear` to construct the layer and load reference weights via
+  `load_state_dict({"weight": ...})` rather than a custom constructor
+  argument; named the attribute `weight` so later nested state-dict keys
+  match. `test_linear` passes.
+- Next: the `Embedding` module.
+
 ### 2026-08-30
 
 - Measured compression ratios over sampled documents: 4.09 bytes/token on
