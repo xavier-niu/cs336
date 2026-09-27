@@ -2,6 +2,37 @@
 
 ## Daily Progress
 
+### 2026-09-27
+
+- Added the `SwiGLU` feed-forward network, W2(SiLU(W1 x) ⊙ W3 x), built from
+  three `Linear` submodules so the (out, in) weight layout, init, and
+  device/dtype handling come from already-tested code. It takes `d_ff` from
+  the caller rather than deriving it: the handout's ~8/3·d_model is rounded
+  to a multiple of 64, and the reference weights fix its exact size.
+- The first hand-rolled version hit three bugs along the way: a float
+  `2.67 * d_model` passed as a tensor shape, every weight stored transposed
+  as `(in, out)`, and a duplicated init that reimplemented `Linear`.
+- Added a `SiLU` module computed with `torch.sigmoid` rather than
+  `x / (1 + exp(-x))`, whose `exp` overflows for large negative inputs in low
+  precision; SwiGLU reuses it, and `run_silu` is wired to it. (In Python `^`
+  is bitwise XOR, not a power.)
+- Renamed the forward intermediates to say what they hold: `gate` (W1 x,
+  nothing gated yet), `gate_act`, `up`, and `hidden` — `ffn` names the whole
+  module, not one tensor inside it.
+- Wired `run_swiglu` through `load_state_dict` with nested keys: a
+  submodule's parameters load via dotted paths such as
+  `gated_linear.weights`, and strict loading reported the missing/unexpected
+  keys when the first attempt stopped at the submodule name. W1 and W3 share
+  a shape, so only the test's values can catch them being swapped.
+- Made the docstring with the ASCII diagram a raw string: Markdown fences do
+  not stop Python from treating `\ ` as an invalid escape sequence.
+- The linear, embedding, rmsnorm, swiglu and silu tests all pass.
+- Next: align attribute names with the reference state-dict keys
+  (`ffn.w1.weight`, `ln1.weight`, `token_embeddings.weight`), then RoPE.
+
+<details>
+<summary>Earlier updates</summary>
+
 ### 2026-09-26
 
 - Added `Embedding`: a `(num_embeddings, d_model)` parameter initialized with
@@ -27,9 +58,6 @@
 - Wired the `run_embedding` and `run_rmsnorm` adapters through
   `load_state_dict`; `test_linear`, `test_embedding` and `test_rmsnorm` pass.
 - Next: SiLU and the SwiGLU feed-forward network.
-
-<details>
-<summary>Earlier updates</summary>
 
 ### 2026-09-25
 

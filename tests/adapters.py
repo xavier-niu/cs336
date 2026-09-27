@@ -11,7 +11,7 @@ from torch import Tensor
 
 from basics.bpe_tokenizer.tokenizer import Tokenizer
 from basics.bpe_tokenizer.train import train
-from basics.transformer.layers import Linear, Embedding, RMSNorm
+from basics.transformer.layers import Linear, Embedding, RMSNorm, SiLU, SwiGLU
 
 
 def run_linear(
@@ -94,7 +94,16 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+
+    swiglu_layer = SwiGLU(d_model, d_ff)
+    swiglu_layer.load_state_dict(
+        {
+            "gated_linear.weights": w1_weight,
+            "down_linear.weights": w2_weight,
+            "up_linear.weights": w3_weight,
+        }
+    )
+    return swiglu_layer(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -405,7 +414,8 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    silu = SiLU()
+    return silu(in_features)
 
 
 def run_get_batch(

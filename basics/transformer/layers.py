@@ -101,8 +101,57 @@ class RMSNorm(torch.nn.Module):
         # (batch_size, seq_len, 1)
         mean_sq = torch.mean(x_sq, dim=-1, keepdim=True)
         # (batch_size, seq_len, 1)
-        rms = torch.sqrt((mean_sq+self.eps))
+        rms = torch.sqrt((mean_sq + self.eps))
         # (batch_size, seq_len, d_model)
         ret = x / rms * self.gains
 
         return ret.to(in_dtype)
+
+
+class SiLU(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.sigmoid(x)
+
+class SwiGLU(torch.nn.Module):
+    r"""Position-wise FeedForward Network with SwiGLU Activation
+    
+    The network architecture diagram:
+
+    Input x (dim: d)
+               /        \
+              /          \
+     x W_gate (up-proj)   x W_up (up-proj)
+            |              |
+         Swish(·)          |
+            \              /
+             \            /
+              \          /
+         Element-wise Product ⊙ (dim: d_ff)
+                       |
+               x W_down (down-proj to d)
+                       |
+                     Output
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+        self.gated_linear = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.up_linear = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.silu = SiLU()
+        self.down_linear = Linear(d_ff, d_model, device=device, dtype=dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        gate = self.gated_linear(x)
+        gate_act = self.silu(gate)
+        up = self.up_linear(x)
+        hidden = gate_act * up
+        return self.down_linear(hidden)
