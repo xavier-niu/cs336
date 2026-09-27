@@ -2,6 +2,35 @@
 
 ## Daily Progress
 
+### 2026-09-26
+
+- Added `Embedding`: a `(num_embeddings, d_model)` parameter initialized with
+  a truncated normal N(0, 1) cut at ±3, and a forward that is a single
+  integer-array index into it. Indexing with a `(...)` tensor of token IDs
+  returns `(...) + (d_model,)` in one vectorized step, so it needs no loop and
+  none of the flatten/reshape that `torch.index_select` would, and repeated
+  IDs accumulate their gradients into the same row.
+- Added `RMSNorm` with a `(d_model,)` gain initialized to ones. The input is
+  upcast to float32 and cast back afterwards; the RMS is computed as the root
+  of the mean of squares over the last dimension with `keepdim=True`, so the
+  `(..., 1)` result divides each token across its features.
+- Worked through broadcasting: shapes align from the right, so the `(d_model,)`
+  gain needs no reshape, while a `(d_model, 1)` gain or an `rms` reduced
+  without `keepdim` would line up against `seq_len` instead — erroring, or
+  silently computing the wrong thing when `seq_len == d_model`.
+- Caught a regression while refactoring: wrapping the sum of squares in a mean
+  over its own size-1 dimension computed the root of the *sum*, scaling every
+  output down by √d_model. Splitting the RMS into named, shape-annotated steps
+  (`x_sq`, `mean_sq`, `rms`) made it easy to verify.
+- Renamed `Linear`'s parameter back to `weights`, with the adapter key
+  updated to match.
+- Wired the `run_embedding` and `run_rmsnorm` adapters through
+  `load_state_dict`; `test_linear`, `test_embedding` and `test_rmsnorm` pass.
+- Next: SiLU and the SwiGLU feed-forward network.
+
+<details>
+<summary>Earlier updates</summary>
+
 ### 2026-09-25
 
 - Started the Transformer LM with `basics/transformer/layers.py`: a `Linear`
@@ -25,9 +54,6 @@
   argument; named the attribute `weight` so later nested state-dict keys
   match. `test_linear` passes.
 - Next: the `Embedding` module.
-
-<details>
-<summary>Earlier updates</summary>
 
 ### 2026-08-30
 
